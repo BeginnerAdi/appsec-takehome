@@ -1,0 +1,3 @@
+# Explicit scope (replaces Semgrep hidden defaults)
+artifacts/
+.git/
