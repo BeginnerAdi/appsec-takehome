@@ -1,0 +1,17 @@
+{
+  "description": "Known/accepted gitleaks findings. A finding is ignored when its fingerprint (file:rule:line) is listed here. Never put secret values in this file.",
+  "entries": [
+    {
+      "fingerprint": "samples/demo-app/keys/dev_private_key.pem:private-key:1",
+      "reason": "Fake key used only by the local demo; never deployed.",
+      "owner": "appsec-team",
+      "added": "2026-11-14"
+    },
+    {
+      "fingerprint": "samples/demo-app/settings.py:generic-api-key:6",
+      "reason": "Fake payment key in demo settings; real key comes from the vault in production.",
+      "owner": "appsec-team",
+      "added": "2026-11-14"
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+# gitleaks configuration for appsec-takehome.
+# Start from the ~200 built-in rules, then tune on top of them.
+
+title = "appsec-takehome gitleaks config"
+
+[extend]
+useDefault = true
+
+# TUNING 1 (suppression): values that start with "dummy" or "fake" are placeholders
+# by team convention, not real credentials. Without this, settings.py:ANALYTICS_KEY
+# shows up as a generic-api-key finding.
+[[allowlists]]
+description = "Placeholder values by convention (dummy_..., fake_...)"
+regexTarget = "secret"
+regexes = ['''(?i)^(dummy|fake)''']
+
+# TUNING 2 (path exclude): never scan our own generated output.
+[[allowlists]]
+description = "Generated scan output"
+paths = ['''(^|/)artifacts/''']
+
+# TUNING 3 (custom rule): our company's token format gets a precise rule id
+# (acme-api-token) instead of a vague generic-api-key match.
+[[rules]]
+id = "acme-api-token"
+description = "ACME internal API token"
+regex = '''acme_(?:live|test)_[a-f0-9]{32}'''
+keywords = ["acme_"]
