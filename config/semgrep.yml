@@ -1,0 +1,83 @@
+# Bounded SAST rule set: 5 local Python security rules (no registry, no network).
+#
+# Noise-reduction mechanisms used in this file (search for "NOISE"):
+#   1. pattern-not   -> skip safe variants (constant shell command, parameterized SQL)
+#   2. paths.exclude -> skip test code, which is never shipped
+#   3. per-rule severity -> low-risk rules are LOW so the default threshold (HIGH) ignores them
+
+rules:
+  - id: python-sql-injection-fstring
+    languages: [python]
+    severity: CRITICAL
+    message: >-
+      SQL query built with an f-string. If any part comes from user input this is
+      SQL injection. Use a parameterized query: execute("... WHERE id = ?", (value,)).
+    metadata:
+      category: sql-injection
+      cwe: "CWE-89"
+    pattern-either:
+      - pattern: $DB.execute(f"...", ...)
+      - pattern: $DB.execute("..." + $X, ...)
+    paths:
+      exclude:
+        - "**/tests/**"          # NOISE 2
+
+  - id: python-subprocess-shell-true
+    languages: [python]
+    severity: HIGH
+    message: >-
+      subprocess called with shell=True on a non-constant command. This allows
+      command injection. Pass a list of arguments and drop shell=True.
+    metadata:
+      category: command-injection
+      cwe: "CWE-78"
+    patterns:
+      - pattern: subprocess.$FUNC($CMD, ..., shell=True, ...)
+      - pattern-not: subprocess.$FUNC("...", ..., shell=True, ...)   # NOISE 1: constant string is safe
+    paths:
+      exclude:
+        - "**/tests/**"          # NOISE 2
+
+  - id: python-yaml-unsafe-load
+    languages: [python]
+    severity: HIGH
+    message: >-
+      yaml.load() without a safe Loader can construct arbitrary Python objects.
+      Use yaml.safe_load().
+    metadata:
+      category: insecure-deserialization
+      cwe: "CWE-502"
+    patterns:
+      - pattern: yaml.load(...)
+      - pattern-not: yaml.load(..., Loader=yaml.SafeLoader, ...)    # NOISE 1: safe loader is fine
+    paths:
+      exclude:
+        - "**/tests/**"          # NOISE 2
+
+  - id: python-requests-verify-false
+    languages: [python]
+    severity: MEDIUM
+    message: >-
+      TLS certificate verification is disabled (verify=False). Traffic can be
+      intercepted. Remove verify=False.
+    metadata:
+      category: insecure-transport
+      cwe: "CWE-295"
+    pattern: requests.$METHOD(..., verify=False, ...)
+    paths:
+      exclude:
+        - "**/tests/**"          # NOISE 2
+
+  - id: python-weak-hash-md5
+    languages: [python]
+    severity: LOW                # NOISE 3: real but low-risk; only fails with MIN_SEVERITY=LOW/INFO
+    message: >-
+      MD5 is a broken hash. Fine for cache keys, never for passwords or signatures.
+      Prefer hashlib.sha256().
+    metadata:
+      category: weak-crypto
+      cwe: "CWE-328"
+    pattern: hashlib.md5(...)
+    paths:
+      exclude:
+        - "**/tests/**"          # NOISE 2
