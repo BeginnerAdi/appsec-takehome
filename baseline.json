@@ -8,7 +8,7 @@
       "added": "2026-11-14"
     },
     {
-      "fingerprint": "samples/demo-app/settings.py:generic-api-key:6",
+      "fingerprint": "samples/demo-app/settings.py:generic-api-key:4",
       "reason": "Fake payment key in demo settings; real key comes from the vault in production.",
       "owner": "appsec-team",
       "added": "2026-11-14"

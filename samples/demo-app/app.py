@@ -1,7 +1,6 @@
 """Deliberately insecure demo app. It exists only so the scanners have something to find.
 
 Every risky line is marked with a comment saying which scanner rule should flag it.
-DO NOT copy these patterns into real code.
 """
 import hashlib
 import sqlite3

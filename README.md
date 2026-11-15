@@ -1,91 +1,53 @@
 # appsec-takehome
 
-Security scanning wrappers for the AppSec Tools Engineer take-home.
+This repo covers Task 1 (secrets scanning with gitleaks), Task 2 (SAST with Semgrep) and Task 3 (triage report). The scanners run in Docker and scan a small demo app in samples/demo-app that contains planted issues. All secrets in it are fake.
 
-- **Task 1:** secrets scan (gitleaks) with baseline + suppression
-- **Task 2:** SAST (Semgrep) with a bounded rule set, noise reduction and a `MIN_SEVERITY` threshold
-- **Task 3 (bonus):** triage report built from both outputs
+Requirements: Linux or macOS with Docker, Python 3 and bash.
 
-Both scanners run in pinned Docker images (`config/tools.env`). No cloud accounts and no network rule downloads.
-The scan target is a small, deliberately insecure demo app in `samples/demo-app/`. All secrets in it are fake.
-
-## Requirements
-
-Linux or macOS with Docker, Python 3.8+ (standard library only) and bash. `make` is optional.
-
-## Run everything (one command)
+## Run
 
 ```bash
-./run.sh          # or: make
+git clone https://github.com/BeginnerAdi/appsec-takehome.git
+cd appsec-takehome
+./run.sh
 ```
 
-It writes these files to `artifacts/`:
+This runs all three tasks and writes the results to the artifacts folder: secrets.raw.json, secrets.filtered.json, sast.json, sast.sarif and triage.md. `make` also works, but make reports any failure as exit code 2, so use ./run.sh to see the exact codes below.
 
-| File | Content |
-|---|---|
-| `secrets.raw.json` | every gitleaks finding (secret values redacted) |
-| `secrets.filtered.json` | only NEW findings, after removing `baseline.json` entries, plus a summary |
-| `sast.json`, `sast.sarif` | Semgrep results |
-| `triage.md` | counts by severity/category, top 5, suppressed vs new |
-
-**Expected result on this repo: exit code `1`.** Secrets pass (2 found, both baselined), but SAST finds 3 issues at or above the default `MIN_SEVERITY=HIGH`.
+Expected exit code: 1. The secrets scan passes because both secrets are in the baseline, but the SAST scan finds issues at or above the default HIGH threshold.
 
 ## Exit codes
 
-| Code | `./run.sh` | `scripts/scan_secrets.py` | `scripts/scan_sast.py` |
-|---|---|---|---|
-| 0 | everything passed | no new (non-baseline) secrets | nothing at/above `MIN_SEVERITY` |
-| 1 | at least one scan failed | at least 1 new secret | at least 1 finding at/above `MIN_SEVERITY` |
-| 2 | a tool/config error | gitleaks/Docker/baseline error | Semgrep/Docker error or invalid `MIN_SEVERITY` |
-
-`make` exits `2` for any failure (that's make's own behaviour). Use `./run.sh` when you need the exact code.
+- 0: no new secrets and no SAST findings at or above MIN_SEVERITY
+- 1: at least one new secret, or at least one SAST finding at or above MIN_SEVERITY
+- 2: the scanner itself failed, for example Docker is not running or MIN_SEVERITY is invalid
 
 ## Task 1: secrets
 
 ```bash
-python3 scripts/scan_secrets.py; echo "exit=$?"
-# [secrets] raw=2 baselined=2 new=0    -> exit=0
-
-# add a new (fake) secret -> exit 1
-echo 'NEW_TOKEN = "acme_live_0123456789abcdef0123456789abcdef"' >> samples/demo-app/settings.py
-python3 scripts/scan_secrets.py; echo "exit=$?"
-# [secrets] raw=3 baselined=2 new=1    -> exit=1
-git checkout samples/demo-app/settings.py   # undo
+python3 scripts/scan_secrets.py
 ```
 
-**How the baseline works:** `baseline.json` lists accepted findings by fingerprint (`file:rule:line`), each with a `reason`, `owner` and `added` date. The wrapper removes those from `secrets.filtered.json` and only fails on what's left. To accept a finding, copy its `Fingerprint` from `artifacts/secrets.raw.json` into a new entry. Entries that no longer match anything are reported as "stale".
+Exit code 0. It finds 2 secrets and both are listed in baseline.json, so artifacts/secrets.filtered.json has no findings. Any secret that is not in baseline.json makes it exit with 1.
 
-## Task 2: SAST and `MIN_SEVERITY`
+## Task 2: SAST
 
 ```bash
-MIN_SEVERITY=LOW      python3 scripts/scan_sast.py; echo "exit=$?"   # 5 of 5 count  -> exit=1
-MIN_SEVERITY=MEDIUM   python3 scripts/scan_sast.py; echo "exit=$?"   # 4 of 5        -> exit=1
-MIN_SEVERITY=HIGH     python3 scripts/scan_sast.py; echo "exit=$?"   # 3 of 5 (default) -> exit=1
-MIN_SEVERITY=CRITICAL python3 scripts/scan_sast.py; echo "exit=$?"   # 1 of 5        -> exit=1
-TARGET=samples/demo-app/tests python3 scripts/scan_sast.py; echo "exit=$?"   # 0 findings (tests excluded) -> exit=0
-MIN_SEVERITY=BOGUS    python3 scripts/scan_sast.py; echo "exit=$?"   # invalid value -> exit=2
+MIN_SEVERITY=INFO python3 scripts/scan_sast.py
+MIN_SEVERITY=HIGH python3 scripts/scan_sast.py
 ```
 
-`INFO`, `WARNING` and `ERROR` are accepted as aliases for `LOW`, `MEDIUM` and `HIGH`. So `MIN_SEVERITY=INFO` (5 findings) is more sensitive than `MIN_SEVERITY=HIGH` (3 findings).
+INFO counts 5 findings and HIGH counts 3, so INFO is more sensitive. Both exit with 1. The default is HIGH.
 
 ## Task 3: triage report
 
 ```bash
-python3 scripts/triage_report.py && cat artifacts/triage.md
+python3 scripts/triage_report.py
 ```
 
-Top 5 is ordered by severity (highest first), then file path (A to Z). Secrets have no severity in gitleaks, so private keys count as CRITICAL and all other secrets as HIGH.
+Writes artifacts/triage.md with counts by severity and category, the top 5 findings (severity first, then file path), and the number of suppressed vs new secrets. Exit code 0.
 
 ## Tuning notes
 
-gitleaks keeps its default rules and adds three tuning choices in `config/gitleaks.toml`: an allowlist for values starting with `dummy`/`fake` (team placeholder convention), an exclude for generated `artifacts/`, and a custom `acme-api-token` rule. Known findings are accepted in `baseline.json` with a reason and owner, so suppression stays auditable. Semgrep uses a bounded set of 5 local Python rules. Noise is cut with `pattern-not` for safe variants (constant shell command, `SafeLoader`), `paths.exclude` for `tests/` (test code isn't shipped), and LOW severity for MD5, so only real risks fail the default `HIGH` threshold.
-
-## Determinism
-
-Pinned image versions, `--metrics=off`, local rules only, findings sorted before writing, relative paths, JSON written with sorted keys, and no timestamps in the report. Running `./run.sh` twice produces byte-identical artifacts.
-
-## Known limitations
-
-- The baseline matches on `file:rule:line`, so adding lines above a baselined secret makes it look new.
-- gitleaks runs in `dir` mode (files on disk), not over git history.
-- Secret severities are assigned by the wrapper, not by gitleaks.
+gitleaks uses its default rules plus an allowlist for "dummy" and "fake" placeholder values, so obvious placeholders are not reported. Accepted findings are listed in baseline.json with a reason and an owner.
+Semgrep uses five local Python rules. To reduce noise they skip safe code (a constant shell command, yaml's safe loader) and the tests folder, and MD5 is rated LOW so it is reported without failing the HIGH threshold.
